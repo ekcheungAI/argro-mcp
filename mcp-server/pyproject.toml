@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-news-mcp-server"
+version = "0.1.0"
+description = "Multi-source AI news and insights for agents: hot list, search, and structured daily briefs."
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.10",
+    "httpx>=0.27",
+    "pydantic>=2",
+    "pydantic-settings>=2",
+    "uvicorn>=0.30",
+]
+
+[tool.setuptools]
+py-modules = ["main", "client", "tools"]
