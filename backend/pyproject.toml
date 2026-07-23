@@ -9,7 +9,10 @@ description = "Argro MCP backend - AI news aggregation platform"
 readme = { text = "Argro backend", content-type = "text/plain" }
 requires-python = ">=3.11"
 dependencies = [
-    "fastapi",
+    # pinned: verified combination (fastapi 0.116.x + starlette 0.46.x); unpinned
+    # fastapi/starlette upgrades broke route introspection and conflict with mcp's starlette pin
+    "fastapi>=0.116.1,<0.117",
+    "starlette>=0.46.2,<0.47",
     "uvicorn[standard]",
     "sqlalchemy>=2.0",
     "alembic",

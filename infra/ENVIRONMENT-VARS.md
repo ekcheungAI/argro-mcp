@@ -30,7 +30,7 @@ Both `backend` (API) and `worker` (`python -m app.worker`) read the same
 | `INGESTION_BATCH_SIZE` | worker | No | `50` | `50` | Items per ingestion batch (07 §2 backend-specific). |
 | `INGESTION_INTERVAL_MINUTES` | worker | No | `15` | `15` | Interval between ingestion runs (07 §2). |
 | `WORKER_CONCURRENCY` | worker | No | `4` | `4` | Parallel ingestion/enrichment tasks (07 §2 worker-specific). |
-| `CORS_ORIGINS` | backend | No | _(not yet read by code)_ | `https://app.example.zeabur.app` | Reserved for the backend CORS middleware (allow-list of frontend origins). Currently not in `config.py`; set it once CORS middleware lands. See ZEABUR-SETUP.md FAQ. |
+| `CORS_ORIGINS` | backend | No | `*` | `https://app.example.zeabur.app` | Comma-separated allow-list for the backend CORS middleware (read in `app/main.py`). Defaults to `*` (allow all); restrict to the frontend origin in production. |
 
 > 07 §2 also mentions `VECTOR_DB_URL` and `NEWS_API_KEY`: this project uses
 > **pgvector inside the same Postgres**, so `DATABASE_URL` covers both (no

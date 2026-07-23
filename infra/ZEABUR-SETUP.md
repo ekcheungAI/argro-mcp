@@ -152,11 +152,11 @@ Run it **once** before/alongside the first backend boot — either:
 ## Troubleshooting / FAQ
 
 **`CORS` errors in the browser**
-The frontend calls the backend cross-origin. If/when the backend enables CORS
-middleware, set `CORS_ORIGINS` on the backend to the frontend's public domain
+The frontend calls the backend cross-origin. The backend runs CORS middleware
+(`backend/app/main.py`) with a default allow-list of `*`. To restrict it, set
+`CORS_ORIGINS` on the backend to the frontend's public domain
 (e.g. `https://yourapp.zeabur.app`). If requests are proxied same-origin this
-is unnecessary. (`CORS_ORIGINS` is reserved but not yet read by
-`backend/app/config.py` — check the backend changelog.)
+is unnecessary.
 
 **`connection refused` / driver errors for `DATABASE_URL`**
 The URL **must** use SQLAlchemy's psycopg-3 scheme:

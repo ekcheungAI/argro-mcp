@@ -52,7 +52,9 @@ services:
       INGESTION_BATCH_SIZE: ${INGESTION_BATCH_SIZE:-50}
       INGESTION_INTERVAL_MINUTES: ${INGESTION_INTERVAL_MINUTES:-15}
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
-      # CORS_ORIGINS: ${CORS_ORIGINS:-*}   # uncomment if/when backend enables CORS middleware
+      # Backend enables CORS middleware (app/main.py); default is "*". Set
+      # CORS_ORIGINS to a comma-separated origin list to restrict it.
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
     ports:
       - "8000:8000"
     depends_on:
