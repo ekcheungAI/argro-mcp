@@ -1,0 +1,10 @@
+__pycache__/
+*.egg-info/
+node_modules/
+.next/
+.env
+.env.*
+!.env.example
+.venv/
+dist/
+build/
