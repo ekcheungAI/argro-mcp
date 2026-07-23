@@ -1,0 +1,50 @@
+# Frontend image (Next.js 15, App Router).
+#
+# Build context MUST be the repository root, e.g.:
+#   docker build -f infra/Dockerfile.frontend \
+#     --build-arg NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 -t argro-frontend .
+#
+# NEXT_PUBLIC_API_BASE_URL is a *build-time* arg: Next.js inlines NEXT_PUBLIC_*
+# variables into the bundle at build time. It is also exported as a runtime env
+# below because all data fetching happens in React Server Components, which read
+# process.env on the server at request time. Set BOTH to be safe.
+
+# ---------- builder ----------
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
+
+# Install all deps (incl. devDependencies needed for the build) from the lockfile.
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+
+# Copy sources and build.
+COPY frontend/ ./
+RUN npm run build
+
+# ---------- runner ----------
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+ENV NODE_ENV=production
+
+# Keep the value available at runtime for React Server Components
+# (override at deploy time with the public backend URL).
+ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
+
+# Production deps only (next start needs `next` + react/react-dom).
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+
+# Built app + runtime config. (No standalone output is configured in
+# next.config.ts, so we run the classic `npm start` / `next start`.)
+COPY --from=builder /app/.next ./.next
+COPY frontend/next.config.ts ./next.config.ts
+
+EXPOSE 3000
+
+CMD ["npm", "start"]

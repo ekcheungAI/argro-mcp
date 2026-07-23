@@ -1,0 +1,130 @@
+# Local development stack for argro-mcp (07-infra-zeabur-plan.md §4).
+#
+# Usage (from the infra/ directory):
+#   cp .env.example .env          # adjust values as needed
+#   docker compose -f docker-compose.example.yml --env-file .env up --build
+#
+# Build contexts are the REPOSITORY ROOT (one level up from infra/), so the
+# Dockerfiles can COPY backend/ / mcp-server/ / frontend/.
+#
+# Services:
+#   postgres   - PostgreSQL 16 with the pgvector extension preinstalled
+#   backend    - FastAPI API on :8000 (waits for migrate to succeed)
+#   migrate    - one-shot: runs `alembic upgrade head` + seed, then exits
+#   worker     - same image as backend, command override `python -m app.worker`
+#   mcp-server - FastMCP streamable-HTTP on :8100 (path /mcp)
+#   frontend   - Next.js on :3000
+
+services:
+  postgres:
+    # pgvector/pgvector ships the `vector` extension; the initial migration
+    # (backend/alembic/versions/0001_initial.py) runs
+    # `CREATE EXTENSION IF NOT EXISTS vector;` inside the app database.
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-argro}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: &backend-build
+      context: ..
+      dockerfile: infra/Dockerfile.backend
+    environment: &backend-env
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-argro}
+      APP_ENV: ${APP_ENV:-dev}
+      BACKEND_PORT: "8000"
+      API_KEY: ${API_KEY:-}
+      MOONSHOT_API_KEY: ${MOONSHOT_API_KEY:-}
+      MOONSHOT_BASE_URL: ${MOONSHOT_BASE_URL:-https://api.moonshot.ai/v1}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      TRANSLATION_MODEL: ${TRANSLATION_MODEL:-kimi-k2}
+      TARGET_LANGS: ${TARGET_LANGS:-en,zh-TW}
+      INGESTION_BATCH_SIZE: ${INGESTION_BATCH_SIZE:-50}
+      INGESTION_INTERVAL_MINUTES: ${INGESTION_INTERVAL_MINUTES:-15}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
+      # CORS_ORIGINS: ${CORS_ORIGINS:-*}   # uncomment if/when backend enables CORS middleware
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      # python:3.12-slim has no curl; use urllib against the /healthz endpoint.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  migrate:
+    # One-shot schema setup. We deliberately use a separate service instead of
+    # running migrations in the backend startup script: with multiple backend
+    # replicas a startup-script migration would race, while a dedicated
+    # one-shot service runs exactly once and `depends_on` guarantees ordering.
+    # Safe to re-run: alembic tracks applied revisions and app.seed is
+    # idempotent (select-before-insert).
+    build: *backend-build
+    command: python -m alembic upgrade head && python -m app.seed
+    environment: *backend-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  worker:
+    # Same image and env as the API; only the entrypoint changes.
+    build: *backend-build
+    command: python -m app.worker
+    environment: *backend-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  mcp-server:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.mcp
+    environment:
+      MCP_BACKEND_URL: http://backend:8000
+      API_KEY: ${API_KEY:-}
+      MCP_SERVER_HOST: 0.0.0.0
+      MCP_SERVER_PORT: "8100"
+    ports:
+      - "8100:8100"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.frontend
+      args:
+        # Browser-visible URL of the backend (inlined at build time AND passed
+        # as a runtime env for React Server Components).
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

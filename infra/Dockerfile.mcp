@@ -1,0 +1,27 @@
+# MCP server image (FastMCP, streamable-HTTP transport on /mcp).
+#
+# Build context MUST be the repository root, e.g.:
+#   docker build -f infra/Dockerfile.mcp -t argro-mcp .
+#
+# Runtime config (see mcp-server/README.md):
+#   MCP_BACKEND_URL  - base URL of the backend API (default http://localhost:8000)
+#   API_KEY          - optional; forwarded to the backend as X-API-Key
+#   MCP_SERVER_HOST  - bind host (default 0.0.0.0)
+#   MCP_SERVER_PORT  - bind port (default 8100)
+
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# main.py / client.py / tools.py + pyproject.toml (py-modules install).
+COPY mcp-server/ /app/
+
+RUN pip install --no-cache-dir .
+
+EXPOSE 8100
+
+# Serves the streamable-HTTP MCP endpoint at http://0.0.0.0:8100/mcp
+CMD ["python", "main.py"]

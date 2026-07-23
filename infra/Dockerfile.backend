@@ -1,0 +1,32 @@
+# Backend API image (FastAPI + SQLAlchemy + Alembic).
+#
+# Build context MUST be the repository root (see infra/docker-compose.example.yml
+# and infra/ZEABUR-SETUP.md), e.g.:
+#   docker build -f infra/Dockerfile.backend -t argro-backend .
+#
+# The SAME image is used for three Zeabur / compose services:
+#   - backend : default CMD below (uvicorn serving app.main:app on :8000)
+#   - worker  : override the command to `python -m app.worker`
+#               (same image, same env, no exposed port needed)
+#   - migrate : one-shot command `python -m alembic upgrade head && python -m app.seed`
+# No separate worker image is built on purpose: the worker shares code and deps
+# with the API (07-infra-zeabur-plan.md §1.2).
+
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# Copy the whole backend package (app/, alembic/, alembic.ini, pyproject.toml).
+# alembic.ini must live at the WORKDIR so `python -m alembic ...` finds it.
+COPY backend/ /app/
+
+# Install the project and its dependencies from pyproject.toml.
+RUN pip install --no-cache-dir .
+
+EXPOSE 8000
+
+# Default: run the HTTP API. Worker / migrate override this command.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
