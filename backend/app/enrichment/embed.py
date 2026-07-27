@@ -42,6 +42,19 @@ def embed_articles(
         logger.info("Embedding provider returned no vectors; embedding step skipped")
         return 0
 
+    # 維度對齊:Jina v3 出 1024 維,DB column 係 vector(1536)。
+    # 用 zero-padding 補到 embedding_dim — cosine similarity 喺一致 padding 下唔變。
+    target_dim = settings.embedding_dim
+    padded = []
+    for v in vectors:
+        if len(v) > target_dim:
+            padded.append(v[:target_dim])
+        elif len(v) < target_dim:
+            padded.append(list(v) + [0.0] * (target_dim - len(v)))
+        else:
+            padded.append(list(v))
+    vectors = padded
+
     written = 0
     for article, vector in zip(articles, vectors):
         existing = session.execute(
