@@ -70,7 +70,7 @@ SOURCES: list[dict] = [
     {
         "name": "arXiv cs.AI",
         "homepage_url": "https://arxiv.org/list/cs.AI/recent",
-        "feed_url": "https://export.arxiv.org/rss/cs.AI",  # https 直連,跳過 301
+        "feed_url": "https://rss.arxiv.org/rss/cs.AI",  # canonical host — export.arxiv.org 對雲 IP 回空 feed
         "priority_weight": 1.2,
     },
     {
