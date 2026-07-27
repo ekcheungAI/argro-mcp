@@ -20,7 +20,7 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT = 60.0
-DEFAULT_CHAT_MODEL = "kimi-k2"
+DEFAULT_CHAT_MODEL = "kimi-k2"  # legacy fallback; primary default is settings.translation_model
 DEFAULT_TEMPERATURE = 0.2
 
 
@@ -70,7 +70,7 @@ class MoonshotClient:
             logger.debug("Moonshot API key not set; skipping chat call")
             return None
         payload = {
-            "model": model or DEFAULT_CHAT_MODEL,
+            "model": model or settings.translation_model,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": kwargs.pop("temperature", DEFAULT_TEMPERATURE),
             **kwargs,
