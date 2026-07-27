@@ -67,7 +67,7 @@ def get_meta_health(db: Session = Depends(get_db)):
     )
     unclassified = (
         db.execute(
-            select(func.count()).select_from(Article).where(Article.topics_cached == "{}")
+            select(func.count()).select_from(Article).where(func.coalesce(func.cardinality(Article.topics_cached), 0) == 0)
         ).scalar()
         or 0
     )
