@@ -91,6 +91,31 @@ class MoonshotClient:
             return None
         return _parse_json(text)
 
+    def chat_messages(
+        self, messages: list[dict], model: str | None = None, **kwargs
+    ) -> str | None:
+        """Multi-turn chat with a raw messages array (system/history support).
+
+        用喺 persona chat endpoint — system prompt + RAG context + 對話歷史。
+        """
+        if not self.available():
+            logger.debug("LLM API key not set; skipping chat_messages call")
+            return None
+        payload = {
+            "model": model or settings.translation_model,
+            "messages": messages,
+            "temperature": kwargs.pop("temperature", DEFAULT_TEMPERATURE),
+            **kwargs,
+        }
+        data = self._post("/chat/completions", payload)
+        if data is None:
+            return None
+        try:
+            return data["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError):
+            logger.warning("Unexpected chat_messages response shape: %s", str(data)[:500])
+            return None
+
     def embed(self, texts: list[str], model: str | None = None) -> list[list[float]] | None:
         """Call the OpenAI-compatible /embeddings endpoint.
 
