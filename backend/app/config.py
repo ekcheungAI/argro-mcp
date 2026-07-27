@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     moonshot_api_key: Optional[str] = None
     moonshot_base_url: str = "https://api.moonshot.ai/v1"
     embedding_model: str = "text-embedding-3-small"  # placeholder
+    embedding_base_url: Optional[str] = None  # 預設跟 moonshot_base_url;Jina 用 https://api.jina.ai/v1
+    embedding_api_key: Optional[str] = None   # 預設跟 moonshot_api_key;Jina 用自己 key
     translation_model: str = "kimi-k2"
     target_langs: str = "en,zh-TW"
 

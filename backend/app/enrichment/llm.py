@@ -104,7 +104,9 @@ class MoonshotClient:
         if not texts:
             return []
         payload = {"model": model or settings.embedding_model, "input": texts}
-        data = self._post("/embeddings", payload)
+        base = (settings.embedding_base_url or self.base_url).rstrip("/")
+        key = settings.embedding_api_key or self.api_key
+        data = self._post("/embeddings", payload, base_url=base, api_key=key)
         if data is None:
             return None
         try:
@@ -118,10 +120,10 @@ class MoonshotClient:
     # internals
     # ------------------------------------------------------------------ #
 
-    def _post(self, path: str, payload: dict) -> dict | None:
-        url = f"{self.base_url}{path}"
+    def _post(self, path: str, payload: dict, base_url: str | None = None, api_key: str | None = None) -> dict | None:
+        url = f"{(base_url or self.base_url)}{path}"
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {api_key or self.api_key}",
             "Content-Type": "application/json",
         }
         try:
