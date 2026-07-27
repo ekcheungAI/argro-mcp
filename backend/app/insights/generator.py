@@ -45,11 +45,11 @@ Write a concise daily digest in {lang}. Return ONLY a JSON object (no markdown f
     {{
       "section_title": "<theme name>",
       "content": "<short paragraph about this theme>",
-      "articles": ["<article_id>", ...]
+      "articles": ["A1", "A4", ...]
     }}
   ]
 }}
-Group the articles into 2-4 thematic sections; every section's "articles" must use ids from the list above.
+Group the articles into 2-4 thematic sections; every section's "articles" must use ONLY the A-labels from the list above (e.g. "A3") — never titles, URLs, or UUIDs.
 """
 
 
@@ -69,28 +69,44 @@ def _top_articles(session: Session, day: date_type, limit: int = TOP_N_ARTICLES)
 
 
 def _llm_insight(articles: list[Article], day: date_type, lang: str, client: LLMProvider) -> dict | None:
+    # LLM 用短 alias(A1..An)引用文章 — 完整 UUID 喺 prompt 入面 LLM 成日抄錯,
+    # 搞到 sanitize 後 articles 全部變空。alias 映射返真 id 先可靠。
+    labels = {f"A{i + 1}": str(a.id) for i, a in enumerate(articles)}
     article_lines = "\n".join(
-        f'- id={a.id} | topics={",".join(a.topics_cached or [])} | {a.title} -- {a.summary or ""}'
-        for a in articles
+        f'- {label} | topics={",".join(a.topics_cached or [])} | {a.title} -- {a.summary or ""}'
+        for label, a in zip(labels, articles)
     )
     prompt = _PROMPT_TEMPLATE.format(day=day.isoformat(), lang=lang, n=len(articles), article_lines=article_lines)
     parsed = client.chat_json(prompt, model=settings.translation_model)
     if not isinstance(parsed, dict) or not parsed.get("title") or not isinstance(parsed.get("sections"), list):
         logger.warning("LLM insight generation returned unusable payload for %s (%s)", day, lang)
         return None
-    # Sanitize section article ids to known ids.
+    # Sanitize section article ids:A-label → 真 id;兼容 LLM 直接回 UUID 嘅情況。
     known_ids = {str(a.id) for a in articles}
     sections = []
     for section in parsed["sections"]:
         if not isinstance(section, dict):
             continue
+        mapped: list[str] = []
+        for raw in section.get("articles", []):
+            key = str(raw).strip().upper()
+            candidate = labels.get(key) or (str(raw) if str(raw) in known_ids else None)
+            if candidate and candidate not in mapped:
+                mapped.append(candidate)
         sections.append(
             {
                 "section_title": str(section.get("section_title", "")).strip() or "Highlights",
                 "content": str(section.get("content", "")).strip(),
-                "articles": [str(i) for i in section.get("articles", []) if str(i) in known_ids],
+                "articles": mapped,
             }
         )
+    # Safety net:如果 LLM 嘅引用全部無效(所有 section 都空),
+    # 按 hot 順序 round-robin 分配,保證 daily 有真文章連結。
+    if sections and not any(s["articles"] for s in sections):
+        logger.warning("LLM insight %s (%s): all article refs invalid — round-robin fallback", day, lang)
+        ids = [str(a.id) for a in articles]
+        for idx, article_id in enumerate(ids):
+            sections[idx % len(sections)]["articles"].append(article_id)
     return {
         "title": str(parsed["title"]).strip(),
         "summary": str(parsed.get("summary", "")).strip(),
