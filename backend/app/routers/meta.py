@@ -9,6 +9,7 @@ from app.config import settings
 from app.db import get_db
 from app.deps import optional_api_key
 from app.models.article import Article
+from app.models.article_embedding import ArticleEmbedding
 from app.models.article_translation import ArticleTranslation
 from app.models.source import Source
 from app.models.topic import Topic
@@ -86,6 +87,9 @@ def get_meta_health(db: Session = Depends(get_db)):
         ).scalar()
         or 0
     )
+    embedded = (
+        db.execute(select(func.count()).select_from(ArticleEmbedding)).scalar() or 0
+    )
     last_fetch = db.execute(select(func.max(Article.fetched_at))).scalar()
 
     src_rows = db.execute(select(Source).order_by(Source.name)).scalars().all()
@@ -134,12 +138,19 @@ def get_meta_health(db: Session = Depends(get_db)):
             "base_url": settings.moonshot_base_url,
             "model": settings.translation_model,
         },
+        "embedding": {
+            "configured": bool(settings.embedding_api_key or settings.moonshot_api_key),
+            "base_url": settings.embedding_base_url or settings.moonshot_base_url,
+            "model": settings.embedding_model,
+            "dim": settings.embedding_dim,
+        },
         "articles": {
             "total": total,
             "today": today_count,
             "week": week_count,
             "unclassified": unclassified,
             "untranslated_zh_tw": untranslated,
+            "embedded": embedded,
         },
         "last_fetch": last_fetch.isoformat() if last_fetch else None,
         "sources": sources_out,
