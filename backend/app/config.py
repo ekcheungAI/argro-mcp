@@ -18,10 +18,10 @@ class Settings(BaseSettings):
     llm_provider: str = "moonshot"
     moonshot_api_key: Optional[str] = None
     moonshot_base_url: str = "https://api.moonshot.ai/v1"
-    embedding_model: str = "text-embedding-3-small"  # placeholder
+    embedding_model: str = "jina-embeddings-v3"  # live 實用值;DB column vector(1536),Jina 出 1024 維會 zero-pad
     embedding_base_url: Optional[str] = None  # 預設跟 moonshot_base_url;Jina 用 https://api.jina.ai/v1
     embedding_api_key: Optional[str] = None   # 預設跟 moonshot_api_key;Jina 用自己 key
-    translation_model: str = "kimi-k2"
+    translation_model: str = "deepseek-v4-flash"  # live 實用值(OpenAI-compatible endpoint)
     target_langs: str = "en,zh-TW"
 
     # Ingestion

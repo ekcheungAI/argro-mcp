@@ -16,13 +16,13 @@ from __future__ import annotations
 import logging
 import signal
 import time
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from app.config import settings
 from app.db import SessionLocal
 from app.enrichment import cluster, embed, hot_score, lang_detect, topics, translate
 from app.ingestion.pipeline import ingest_all_active
-from app.insights.generator import generate_daily_insight
+from app.insights.generator import generate_daily_insight, generate_weekly_insight
 
 logger = logging.getLogger(__name__)
 
@@ -71,13 +71,23 @@ def run_ingestion_cycle() -> None:
 
 
 def run_daily_insights(target_day: date) -> None:
-    """Generate the daily insight for every target language."""
+    """Generate the daily insight for every target language.
+
+    同時 regenerate 當週 weekly insight(week_start = 星期一)— 跟每日一齊更新,
+    等 /insights/daily?type=weekly 永遠有真數據(之前係裝飾參數,保證 404)。
+    """
+    week_start = target_day - timedelta(days=target_day.weekday())
     for lang in settings.target_langs_list:
         with SessionLocal() as session:
             try:
                 generate_daily_insight(session, target_day, lang)
             except Exception:
                 logger.exception("Daily insight generation failed for %s (%s)", target_day, lang)
+                session.rollback()
+            try:
+                generate_weekly_insight(session, week_start, lang)
+            except Exception:
+                logger.exception("Weekly insight generation failed for %s (%s)", week_start, lang)
                 session.rollback()
 
 

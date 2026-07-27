@@ -3,6 +3,7 @@
 Route registration order matters: the literal paths ``/stream`` and ``/hot``
 are declared before ``/{id}`` so they are matched first.
 """
+import logging
 import uuid
 from datetime import datetime, time, timedelta, timezone
 from typing import Optional
@@ -11,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.db import get_db
 from app.deps import (
     SORT_HOT_DESC,
@@ -23,7 +25,10 @@ from app.deps import (
     parse_datetime_param,
     resolve_lang,
 )
+from app.enrichment.embed import pad_to_dim
+from app.enrichment.llm import get_client
 from app.models.article import Article
+from app.models.article_embedding import ArticleEmbedding
 from app.models.article_topic import ArticleTopic
 from app.models.article_translation import ArticleTranslation
 from app.models.source import Source
@@ -38,7 +43,30 @@ from app.schemas.news import (
     TopicBrief,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/news", tags=["news"], dependencies=[Depends(optional_api_key)])
+
+
+def _semantic_distance_expr(q: str):
+    """Embed the query and return a cosine-distance expression, or None.
+
+    用同 write-time 一樣嘅 provider + pad_to_dim 邏輯(Jina v3 1024→1536)。
+    任何一步失敗(provider 未配置、HTTP error、維度唔啱)→ None,caller
+    落返 ILIKE fallback。距離越小越相關(cosine distance ∈ [0,2])。
+    """
+    try:
+        client = get_client()
+        if not client.available():
+            return None
+        vectors = client.embed([q], model=settings.embedding_model)
+        if not vectors or not vectors[0]:
+            return None
+        padded = pad_to_dim(vectors[0], settings.embedding_dim)
+        return ArticleEmbedding.embedding.cosine_distance(padded)
+    except Exception:
+        logger.warning("semantic search embed failed; falling back to ILIKE", exc_info=True)
+        return None
 
 
 def _split_csv(value: str) -> list[str]:
@@ -134,16 +162,33 @@ def get_news_stream(
         query = query.where(Article.topics_cached.overlap(_split_csv(topic)))
     if source:
         query = query.where(Article.source_id.in_(_parse_source_ids(source)))
+    # --- search: semantic (pgvector) first, ILIKE fallback -------------------
+    # Embeddings 係 jina v3 (1024-dim zero-padded 到 1536);query vector 用
+    # 同一個 pad_to_dim 邏輯。semantic 路徑用 cosine distance 排序,同 keyset
+    # cursor 唔兼容 — 所以呢條路徑停用 cursor,直接 limit(搜尋結果第一頁
+    # 已經係最相關)。embed 失敗/provider 未配置 → 靜默落返 ILIKE。
+    semantic_distance = None
     if q:
-        pattern = f"%{q}%"
-        # NOTE: semantic (pgvector) search interface point — when embeddings
-        # are available, rank by article_embeddings.embedding <=> embed(q)
-        # instead of / in addition to this ILIKE fallback.
-        query = query.where(
-            or_(Article.title.ilike(pattern), Article.summary.ilike(pattern))
-        )
+        semantic_distance = _semantic_distance_expr(q)
+        if semantic_distance is not None:
+            query = query.join(
+                ArticleEmbedding, ArticleEmbedding.article_id == Article.id
+            )
+        else:
+            pattern = f"%{q}%"
+            query = query.where(
+                or_(Article.title.ilike(pattern), Article.summary.ilike(pattern))
+            )
 
-    # --- keyset pagination --------------------------------------------------
+    # --- keyset pagination (semantic 路徑除外:用 distance 排序,直接 limit) ----
+    if semantic_distance is not None:
+        rows = db.execute(
+            query.order_by(semantic_distance).limit(limit)
+        ).all()
+        page_rows = list(rows)
+        items = _build_stream_items(db, page_rows, lang)
+        return NewsStreamResponse(items=items, next_cursor=None)
+
     if cursor:
         query = apply_cursor(query, cursor, sort)
     query = order_by_sort(query, sort)

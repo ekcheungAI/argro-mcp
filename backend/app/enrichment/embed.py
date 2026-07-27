@@ -23,6 +23,21 @@ logger = logging.getLogger(__name__)
 MAX_TEXT_CHARS = 4000
 
 
+def pad_to_dim(vector: list[float], target_dim: int) -> list[float]:
+    """Align a vector to the DB column dimension.
+
+    Jina v3 出 1024 維,DB column 係 vector(1536) — zero-padding 補齊;
+    cosine similarity 喺一致 padding 下唔變。長過 target 就截斷。
+    Query-time 同 write-time 必須用同一個 padding 邏輯(news.py semantic
+    search 都用呢個)。
+    """
+    if len(vector) > target_dim:
+        return list(vector[:target_dim])
+    if len(vector) < target_dim:
+        return list(vector) + [0.0] * (target_dim - len(vector))
+    return list(vector)
+
+
 def article_text(article: Article) -> str:
     """Cleaned text used for embedding: title + summary + content prefix."""
     parts = [article.title, article.summary or "", (article.content or "")[:MAX_TEXT_CHARS]]
@@ -44,16 +59,7 @@ def embed_articles(
 
     # 維度對齊:Jina v3 出 1024 維,DB column 係 vector(1536)。
     # 用 zero-padding 補到 embedding_dim — cosine similarity 喺一致 padding 下唔變。
-    target_dim = settings.embedding_dim
-    padded = []
-    for v in vectors:
-        if len(v) > target_dim:
-            padded.append(v[:target_dim])
-        elif len(v) < target_dim:
-            padded.append(list(v) + [0.0] * (target_dim - len(v)))
-        else:
-            padded.append(list(v))
-    vectors = padded
+    vectors = [pad_to_dim(v, settings.embedding_dim) for v in vectors]
 
     written = 0
     for article, vector in zip(articles, vectors):

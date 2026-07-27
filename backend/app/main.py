@@ -8,7 +8,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import insights, meta, news
+from app.routers import admin, insights, meta, news
 
 
 def _cors_origins() -> list[str]:
@@ -31,6 +31,7 @@ def create_app() -> FastAPI:
     app.include_router(news.router)
     app.include_router(insights.router)
     app.include_router(meta.router)
+    app.include_router(admin.router)
 
     @app.get("/healthz")
     def healthz() -> dict[str, str]:

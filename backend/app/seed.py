@@ -51,7 +51,8 @@ SOURCES: list[dict] = [
     {
         "name": "Anthropic News",
         "homepage_url": "https://www.anthropic.com/news",
-        "feed_url": "https://www.anthropic.com/rss.xml",
+        # Anthropic 冇官方 RSS(官網兩個 feed URL 都 404)— 用社區維護 feed
+        "feed_url": "https://raw.githubusercontent.com/Olshansk/rss-feeds/main/feeds/feed_anthropic_news.xml",
         "priority_weight": 1.5,
     },
     {
@@ -69,7 +70,7 @@ SOURCES: list[dict] = [
     {
         "name": "arXiv cs.AI",
         "homepage_url": "https://arxiv.org/list/cs.AI/recent",
-        "feed_url": "http://export.arxiv.org/rss/cs.AI",
+        "feed_url": "https://export.arxiv.org/rss/cs.AI",  # https 直連,跳過 301
         "priority_weight": 1.2,
     },
     {
@@ -102,6 +103,49 @@ SOURCES: list[dict] = [
         "feed_url": "https://venturebeat.com/category/ai/feed/",
         "priority_weight": 1.0,
     },
+    # ---- 中文來源(之前只係手加入 live DB;補入 seed 等 fresh deploy 齊) ----
+    {
+        "name": "36氪",
+        "lang": "zh",
+        "homepage_url": "https://36kr.com/",
+        "feed_url": "https://36kr.com/feed",
+        "priority_weight": 1.2,
+    },
+    {
+        "name": "量子位",
+        "lang": "zh",
+        "homepage_url": "https://www.qbitai.com/",
+        "feed_url": "https://www.qbitai.com/feed",
+        "priority_weight": 1.3,
+    },
+    {
+        "name": "IT之家",
+        "lang": "zh",
+        "homepage_url": "https://www.ithome.com/",
+        "feed_url": "https://www.ithome.com/rss/",
+        "priority_weight": 0.9,
+    },
+    # HN firebase 係兩步 API(generic fetcher 支援唔到)— 用 Algolia HN API
+    {
+        "name": "Hacker News 熱門",
+        "type": "api",
+        "homepage_url": "https://news.ycombinator.com/",
+        "feed_url": "https://hn.algolia.com/api/v1/search",
+        "priority_weight": 1.1,
+        "meta": {
+            "api": {
+                "endpoint": "https://hn.algolia.com/api/v1/search",
+                "params": {"tags": "front_page"},
+                "items_path": "hits",
+                "field_map": {
+                    "external_id": "objectID",
+                    "url": "url",
+                    "title": "title",
+                    "published_at": "created_at",
+                },
+            }
+        },
+    },
 ]
 
 
@@ -120,7 +164,8 @@ def seed_sources(session) -> int:
     for data in SOURCES:
         exists = session.execute(select(Source).where(Source.name == data["name"])).scalar_one_or_none()
         if exists is None:
-            session.add(Source(type="rss", lang="en", is_active=True, **data))
+            row = {"type": "rss", "lang": "en", "is_active": True, **data}
+            session.add(Source(**row))
             created += 1
     return created
 

@@ -174,13 +174,19 @@ function buildUrl(path: string, params?: QueryParams): string {
   return `${API_BASE_URL}${path}${query ? `?${query}` : ''}`;
 }
 
+/** Backend API key — backend 開咗 API_KEY 之後,冇 key 會全部 401。 */
+const API_KEY = process.env.NEXT_PUBLIC_API_KEY ?? '';
+
 async function request<T>(path: string, params?: QueryParams): Promise<T> {
   const url = buildUrl(path, params);
   let res: Response;
   try {
     res = await fetch(url, {
       cache: 'no-store',
-      headers: { Accept: 'application/json' },
+      headers: {
+        Accept: 'application/json',
+        ...(API_KEY ? { 'X-API-Key': API_KEY } : {}),
+      },
     });
   } catch (err) {
     throw new ApiError(
