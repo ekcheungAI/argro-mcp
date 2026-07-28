@@ -169,6 +169,70 @@ def _related_articles(db: Session, question: str, limit: int = 4) -> list[tuple[
 
 
 # ----------------------------------------------------------------------- #
+# 導師知識庫 — 分身除咗新聞 RAG,仲會讀導師自己上傳嘅知識(Supabase)
+# ----------------------------------------------------------------------- #
+
+
+def _expert_knowledge(persona_slug: str, question: str, limit: int = 5) -> list[dict]:
+    """Fetch the instructor's own knowledge entries from Supabase.
+
+    v1 選取邏輯:question 同 title/tags 有字詞重疊嘅優先,其餘按最新;
+    夠細嘅庫(~幾十條)呢個已經好夠。大咗先加 embedding。
+    任何失敗(env 未設/HTTP error)→ 靜默回空,persona 照樣靠新聞 RAG 答。
+    """
+    if not (settings.supabase_url and settings.supabase_secret_key):
+        return []
+    if persona_slug == "platform":
+        return []  # 平台分身冇個人知識庫
+    try:
+        import httpx
+
+        resp = httpx.get(
+            f"{settings.supabase_url}/rest/v1/expert_knowledge",
+            params={
+                "select": "title,content,url,kind,tags,created_at",
+                "expert_slug": f"eq.{persona_slug}",
+                "status": "eq.active",
+                "order": "created_at.desc",
+                "limit": 40,
+            },
+            headers={
+                "apikey": settings.supabase_secret_key,
+                "Authorization": f"Bearer {settings.supabase_secret_key}",
+            },
+            timeout=8.0,
+        )
+        resp.raise_for_status()
+        rows = resp.json()
+    except Exception:
+        logger.warning("expert knowledge fetch failed for %s", persona_slug, exc_info=True)
+        return []
+
+    words = {w.lower() for w in question.split() if len(w) >= 2}
+
+    def score(row: dict) -> int:
+        hay = f"{row.get('title', '')} {' '.join(row.get('tags') or [])}".lower()
+        return sum(1 for w in words if w in hay)
+
+    rows.sort(key=score, reverse=True)
+    return rows[:limit]
+
+
+def _knowledge_block(entries: list[dict]) -> str:
+    if not entries:
+        return ""
+    lines = []
+    for e in entries:
+        snippet = (e.get("content") or "")[:400]
+        lines.append(f"- 【{e.get('kind', 'note')}】{e.get('title', '')}: {snippet}")
+    return (
+        "\n\n以下係「你」(導師本人)授權上傳嘅知識庫內容 — 回答分身本人相關問題時,"
+        "呢啲係你嘅第一手資料,優先於一般知識,但唔好逐字背書,自然噉用:\n"
+        + "\n".join(lines)
+    )
+
+
+# ----------------------------------------------------------------------- #
 # Endpoint
 # ----------------------------------------------------------------------- #
 
@@ -184,6 +248,7 @@ def post_chat(payload: ChatRequest, request: Request, db: Session = Depends(get_
         raise HTTPException(status_code=503, detail="分身暫時離線,請稍後再試")
 
     related = _related_articles(db, payload.message)
+    knowledge = _expert_knowledge(payload.persona, payload.message)
 
     context_block = ""
     if related:
@@ -195,6 +260,7 @@ def post_chat(payload: ChatRequest, request: Request, db: Session = Depends(get_
             "\n\n以下係而家情報庫入面同佢問題最相關嘅真實文章(可以自然引用):\n"
             + "\n".join(lines)
         )
+    context_block += _knowledge_block(knowledge)
 
     messages: list[dict] = [
         {"role": "system", "content": persona["system"] + context_block},

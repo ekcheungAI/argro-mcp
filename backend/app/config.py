@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     embedding_base_url: Optional[str] = None  # 預設跟 moonshot_base_url;Jina 用 https://api.jina.ai/v1
     embedding_api_key: Optional[str] = None   # 預設跟 moonshot_api_key;Jina 用自己 key
     translation_model: str = "deepseek-v4-flash"  # live 實用值(OpenAI-compatible endpoint)
+
+    # Supabase(導師知識庫 RAG — server-side only,secret key 唔會出現喺任何 client)
+    supabase_url: Optional[str] = None
+    supabase_secret_key: Optional[str] = None
     target_langs: str = "en,zh-TW"
 
     # Ingestion
